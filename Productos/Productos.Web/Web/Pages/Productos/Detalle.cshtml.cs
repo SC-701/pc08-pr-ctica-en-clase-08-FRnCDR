@@ -1,27 +1,27 @@
 using Abstracciones.Interfaces.Reglas;
 using Abstracciones.Modelos;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using System.Text.Json;
 
 namespace Web.Pages.Productos
 {
-    public class EliminarModel : PageModel
+    [Authorize]
+    public class DetalleModel : PageModel
     {
         private readonly IConfiguracion _configuracion;
+        public ProductoResponse producto { get; set; } = default;
 
-        public EliminarModel(IConfiguracion configuracion)
+        public DetalleModel(IConfiguracion configuracion)
         {
             _configuracion = configuracion;
         }
 
-        public ProductoResponse producto { get; set; } = default;
-        public async Task<ActionResult> OnGet(Guid? id)
+        public async Task OnGet(Guid? id)
         {
-            if (id == Guid.Empty)
-                return NotFound();
             string endpoint = _configuracion.ObtenerMetodo("ApiEndPoints", "ObtenerProducto");
-            var cliente = new HttpClient();
+            var cliente = ObtenerClienteConToken();
             var solicitud = new HttpRequestMessage(HttpMethod.Get, string.Format(endpoint, id));
 
             var respuesta = await cliente.SendAsync(solicitud);
@@ -29,22 +29,18 @@ namespace Web.Pages.Productos
             var resultado = await respuesta.Content.ReadAsStringAsync();
             var opciones = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
             producto = JsonSerializer.Deserialize<ProductoResponse>(resultado, opciones);
-            return Page();
         }
 
-        public async Task<ActionResult> OnPost(Guid? id)
+        private HttpClient ObtenerClienteConToken()
         {
-            if (id == Guid.Empty)
-                return NotFound();
-            if (!ModelState.IsValid)
-                return Page();
-            string endpoint = _configuracion.ObtenerMetodo("ApiEndPoints", "EliminarProducto");
+            var tokenClaim = HttpContext.User.Claims
+                .FirstOrDefault(c => c.Type == "Token");
             var cliente = new HttpClient();
-            var solicitud = new HttpRequestMessage(HttpMethod.Delete, string.Format(endpoint, id));
-            var respuesta = await cliente.SendAsync(solicitud);
-            respuesta.EnsureSuccessStatusCode();
-            return RedirectToPage("./Index");
-
+            if (tokenClaim != null)
+                cliente.DefaultRequestHeaders.Authorization =
+                    new System.Net.Http.Headers.AuthenticationHeaderValue(
+                        "Bearer", tokenClaim.Value);
+            return cliente;
         }
     }
 }
